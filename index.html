@@ -163,6 +163,19 @@ map.getCanvas().addEventListener('drop', (e) => {
   spawnPegman(lngLat);
 });
 
+function typeText(popup, text, speed = 30) {
+  let i = 0;
+  popup.setText(""); // start empty
+
+  const interval = setInterval(() => {
+    popup.setText(text.slice(0, i));
+    i++;
+
+    if (i > text.length) {
+      clearInterval(interval);
+    }
+  }, speed);
+}    
 
 function spawnPegman(lngLat) {
   if (currentPegmanMarker) {
@@ -205,20 +218,20 @@ currentPegmanMarker.on('dragend', () => {
 
   // Create popup (speech bubble)
   const popup = new maplibregl.Popup({
-    offset: 25,
-    closeButton: false,
-    closeOnClick: false
-  })
-    .setText(message);
+  offset: 25,
+  closeButton: false,
+  closeOnClick: false
+});
 
-  currentPegmanMarker.setPopup(popup);
-  popup.addTo(map);
+popup.setLngLat(lngLat);
+popup.addTo(map);
 
-  // Re-trigger on drag end
-  currentPegmanMarker.on('dragend', () => {
-    const newLngLat = currentPegmanMarker.getLngLat();
-    spawnPegman(newLngLat);
-  });
+// Start typing effect
+typeText(popup, message, 25);
+
+currentPegmanMarker.setPopup(popup);
+
+  
 }
     
 function setRoadColor(color) {
