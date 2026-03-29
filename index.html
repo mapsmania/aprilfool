@@ -111,7 +111,27 @@
   border-top-color: white !important;
   border-bottom-color: white !important;
 }
-  
+
+    @keyframes runOffScreen {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+    left: var(--start-x);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1) skewX(-15deg); /* Lean into the run */
+    left: 110vw; /* Move completely off the right side of the viewport */
+    opacity: 1;
+  }
+}
+
+.fleeing-pegman {
+  position: fixed;
+  z-index: 9999;
+  pointer-events: none;
+  animation: runOffScreen 2.5s forwards ease-in;
+}
+
   </style>
 </head>
 <body>
@@ -163,13 +183,15 @@
 
   const pegmanAnimations = [
     { name: "lost", url: "pegmanlost.gif" },
+    { name: "flee", url: "running.gif" },  
     { name: "look", url: "pegmanlook.gif" },
     { name: "jump", url: "pegmanjump.gif" },  
     { name: "map", url: "pegmanmap.gif" },
     { name: "paint", url: "pegmanpaint.gif" },
     { name: "dance", url: "pegmandance.gif" },
     { name: "photo", url: "pegmanphoto.gif" },
-    { name: "football", url: "footie.gif" }  
+    
+    
   ];
 
   const pegmanMessages = {
@@ -179,10 +201,10 @@
   map: "I'm a little lost. If only I had a better map.",
   paint: "This area is currently undergoing gentrification. Come back when we've finished redecorating.",
   dance: "I'm too busy twerking to be working right now.",
-  lost: "Wooh man! Where am I? More importantly who am I and why am I here?",
-  football: "Today is my day off! There's no Street View today!"
+  lost: "Wooh man! Where am I? More importantly who am I and why am I here?",  
+  flee: "You can't drop me here! I'm outta here."    
   };
-    
+
   const pegmanIcon = document.getElementById('pegman-icon');
 
   // --------------------------
@@ -202,23 +224,66 @@
   // --------------------------
   // SPAWN PEGMAN
   // --------------------------
-  function spawnPegman(lngLat) {
-    if (currentPegmanMarker) {
-      currentPegmanMarker.remove();
-    }
+ function spawnPegman(lngLat) {
+  if (currentPegmanMarker) {
+    currentPegmanMarker.remove();
+  }
 
-    const pegman = pegmanAnimations[pegmanIndex];
-    pegmanIndex = (pegmanIndex + 1) % pegmanAnimations.length;
+  const pegman = pegmanAnimations[pegmanIndex];
+  pegmanIndex = (pegmanIndex + 1) % pegmanAnimations.length;
 
-    const message = pegmanMessages[pegman.name];
+  const message = pegmanMessages[pegman.name];
 
-    const el = document.createElement('img');
-    el.src = pegman.url;
-    el.style.width = "60px";
-    el.style.height = "60px";
-    el.style.transform = "translate(-50%, -50%)";
+  // --- SPECIAL CASE: FLEE ---
+  if (pegman.name === "flee") {
+    // 1. Get the screen pixel position where he was dropped
+    const point = map.project(lngLat);
+    const rect = map.getCanvas().getBoundingClientRect();
+    const screenX = point.x + rect.left;
+    const screenY = point.y + rect.top;
 
-    el.addEventListener('mousedown', (e) => {
+   
+
+    // 2. Create a "dummy" element that lives on the body, not the map
+    const runner = document.createElement('img');
+    runner.src = pegman.url;
+    runner.className = 'fleeing-pegman';
+    runner.style.width = "60px"; // Make him slightly bigger for the run
+    runner.style.height = "60px";      
+    runner.style.left = screenX + 'px';
+    runner.style.top = screenY + 'px';
+    runner.style.setProperty('--start-x', screenX + 'px');
+
+    document.body.appendChild(runner);
+
+    // 3. Show the speech bubble briefly where he dropped
+    const popup = new maplibregl.Popup({
+      offset: 25,
+      closeButton: false,
+      closeOnClick: false
+    })
+    .setLngLat(lngLat)
+    .addTo(map);
+
+    typeText(popup, message);
+
+    // 4. Cleanup: Remove runner and popup after he's gone
+    setTimeout(() => {
+      runner.remove();
+      popup.remove();
+    }, 3000);
+
+    return; // Don't create a standard marker
+  }
+
+  // --- STANDARD CASE (All other animations) ---
+  const el = document.createElement('img');
+  el.src = pegman.url;
+  el.style.width = "60px";
+  el.style.height = "60px";
+  el.style.transform = "translate(-50%, -50%)";
+
+     el.addEventListener('mousedown', (e) => {
   e.stopPropagation(); // prevent map pan
 
   isDragging = true;
@@ -252,33 +317,24 @@
   setRoadColor('#66b2ff');
 });  
 
-    currentPegmanMarker = new maplibregl.Marker({
-      element: el
-    })
+  
+  // (Include your existing marker and popup creation code below)
+  currentPegmanMarker = new maplibregl.Marker({ element: el })
     .setLngLat(lngLat)
     .addTo(map);
 
-    currentPegmanMarker.on('dragstart', () => {
-      setRoadColor('#66b2ff');
-    });
+  const popup = new maplibregl.Popup({
+    offset: 25,
+    closeButton: false,
+    closeOnClick: false
+  })
+  .setLngLat(lngLat)
+  .addTo(map);
 
-    currentPegmanMarker.on('dragend', () => {
-      restoreRoadColors();
-      spawnPegman(currentPegmanMarker.getLngLat());
-    });
-
-    const popup = new maplibregl.Popup({
-      offset: 25,
-      closeButton: false,
-      closeOnClick: false
-    })
-    .setLngLat(lngLat)
-    .addTo(map);
-
-    typeText(popup, message);
-    currentPegmanMarker.setPopup(popup);
-  }
-
+  typeText(popup, message);
+  currentPegmanMarker.setPopup(popup);
+}
+      
   // --------------------------
   // ROAD COLOR
   // --------------------------
