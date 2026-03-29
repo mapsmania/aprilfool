@@ -51,23 +51,49 @@
   cursor: grabbing;
 }
 
-   #info-panel {
+  #info-panel {
   position: absolute;
-  top: 20px;
-  left: 20px;
+  top: 10px;
+  left: 10px;
   z-index: 999;
+  
+  width: 280px;
+  background: white;
+  padding: 0; /* Let inner divs handle padding */
+  border-radius: 8px; /* Classic Google Map card radius */
+  
+  /* Google's signature "Material" shadow */
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  
+  font-family: "Google Sans", Roboto, Arial, sans-serif;
+  overflow: hidden;
+  border: 1px solid rgba(0,0,0,0.1);
+}
 
-  max-width: 320px;
+.info-header {
+  padding: 12px 16px;
+  background: #f8f9fa; /* Light grey header */
+  border-bottom: 1px solid #ddd;
+  font-weight: 500;
+  font-size: 15px;
+  color: #3c4043;
+}
 
-  background: rgba(255, 255, 255, 0.95);
-  padding: 12px 14px;
-  border-radius: 8px;
+.google-logo {
+  font-weight: 700;
+  margin-right: 4px;
+}
 
-  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+.info-body {
+  padding: 16px;
+  font-size: 13px;
+  color: #70757a; /* Muted grey text */
+  line-height: 1.5;
+}
 
-  font-family: Arial, sans-serif;
-  font-size: 14px;
-  line-height: 1.4;
+/* Optional: Slight shadow lift on hover */
+#info-panel:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
 }
 
     .maplibregl-popup-content {
@@ -91,9 +117,14 @@
 <body>
 
 <div id="map"></div>
-    <div id="info-panel">Welcome to Sentient Street View! 
-  Pegman now has his own AI.  
-  Drag Pegman onto the map to view Sentient Pegman
+   <div id="info-panel">
+  <div class="info-header">
+    <span class="google-logo"><span style="color: #4285F4">S</span><span style="color: #EA4335">e</span><span style="color: #FBBC05">n</span><span style="color: #4285F4">t</span><span style="color: #34A853">i</span><span style="color: #EA4335">e</span><span style="color: #4285F4">n</span><span style="color: #34A853">t</span></span>
+    <span>Street View</span>
+  </div>
+  <div class="info-body">
+    Pegman has been upgraded with experimental AI. Drag him onto the map to begin.
+  </div>
 </div>
 
     <div id="pegman-control"> <img src="pegman.png" id="pegman-icon" draggable="false" /> </div>
