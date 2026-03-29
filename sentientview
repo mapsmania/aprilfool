@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Sentient Street View</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- MapLibre CSS -->
+  <link href="https://unpkg.com/maplibre-gl@4.0.2/dist/maplibre-gl.css" rel="stylesheet" />
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+    }
+
+    #map {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 100%;  }
+
+
+#pegman-control {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  z-index: 999;
+
+  background: white;
+  padding: 6px;
+  border-radius: 8px;
+
+  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+}
+
+#pegman-icon {
+  width: 17px;
+  height: 31px;
+  cursor: grab;
+  user-select: none;
+  display: block;   /* ✅ removes extra baseline space */
+}
+
+#pegman-icon:active {
+  cursor: grabbing;
+}
+
+   #info-panel {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  z-index: 999;
+
+  max-width: 320px;
+
+  background: rgba(255, 255, 255, 0.95);
+  padding: 12px 14px;
+  border-radius: 8px;
+
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+
+  font-family: Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+}
+  
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+    <div id="info-panel">Welcome to Sentient Street View! 
+  Pegman now has his own AI.  
+  Drag Pegman onto the map to view Sentient Pegman
+</div>
+
+    <div id="pegman-control"> <img src="pegman.png" id="pegman-icon" draggable="true" /> </div>
+
+<!-- MapLibre JS -->
+<script src="https://unpkg.com/maplibre-gl@4.0.2/dist/maplibre-gl.js"></script>
+
+<script>
+
+  let currentPegmanMarker = null;  
+  let pegmanIndex = 0;  
+
+  
+  const map = new maplibregl.Map({
+    container: 'map',
+    style: 'https://tiles.openfreemap.org/styles/positron',
+    center: [-0.1276, 51.5072], // London
+    zoom: 12,
+    attributionControl: false // 👈 disable default
+  });
+
+  // Optional: add zoom + rotation controls
+  map.addControl(new maplibregl.NavigationControl());
+
+map.on('load', () => {
+  cacheRoadColors();
+});  
+    
+
+const pegmanAnimations = [
+  
+  { name: "look", url: "pegmanlook.gif" },
+  { name: "map", url: "pegmanmap.gif" },
+  { name: "paint", url: "pegmanpaint.gif" },
+  { name: "dance", url: "pegmandance.gif" },
+  { name: "photo", url: "pegmanphoto.gif" },  
+  { name: "jump", url: "pegmanjump.gif" },
+  { name: "lost", url: "pegmanlost.gif" }
+];
+
+
+const pegmanMessages = {
+  photo: "Sorry I'm currently too busy shooting new Street View imagery - come back later.",
+  look: "Oh, Boy! I can't show you this view without age verification. Try looking somewhere else.",
+  map: "I'm a little lost. If only I had a better map.",
+  paint: "This area is currently undergoing gentrification. Come back when we've finished decorating.",
+  dance: "Sorry, I'm too busy twerking to be working right now.",
+  jump: "Hi ya! Can you see me! I'm over here!",
+  lost: "Wooh man! Where am I? More importantly who am I and why am I here?"
+};
+
+const pegmanIcon = document.getElementById('pegman-icon');
+
+// Allow drop on the map
+map.getCanvas().addEventListener('dragover', (e) => {
+  e.preventDefault();
+});
+
+map.getCanvas().addEventListener('drop', (e) => {
+  e.preventDefault();
+
+  const rect = map.getCanvas().getBoundingClientRect();
+
+  // Get pixel coordinates relative to the map
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+
+  // Convert to map coordinates
+  const lngLat = map.unproject([x, y]);
+
+  spawnPegman(lngLat);
+});
+
+
+function spawnPegman(lngLat) {
+  // Remove existing Pegman if it exists
+  if (currentPegmanMarker) {
+    currentPegmanMarker.remove();
+    currentPegmanMarker = null;
+  }
+
+  // Get Pegman in sequence
+  const pegman = pegmanAnimations[pegmanIndex];
+
+  // Move index forward
+  pegmanIndex = (pegmanIndex + 1) % pegmanAnimations.length;
+
+  // Update panel message
+  const panel = document.getElementById('info-panel');
+  panel.textContent = pegmanMessages[pegman.name] || "Pegman is thinking...";
+
+  const el = document.createElement('img');
+  el.src = pegman.url;
+  el.style.width = "60px";
+  el.style.height = "60px";
+  el.style.transform = "translate(-50%, -50%)";
+  el.style.cursor = "grab";
+
+  // Create draggable marker
+  currentPegmanMarker = new maplibregl.Marker({
+    element: el,
+    draggable: true
+  })
+    .setLngLat(lngLat)
+    .addTo(map);
+
+  // When Pegman is dragged somewhere else → respawn with next GIF
+  currentPegmanMarker.on('dragend', () => {
+    const newLngLat = currentPegmanMarker.getLngLat();
+    spawnPegman(newLngLat);
+  });
+}
+    
+function setRoadColor(color) {
+  const layers = map.getStyle().layers;
+
+  layers.forEach(layer => {
+    if (
+      layer.type === 'line' &&
+      layer.id.startsWith('highway')
+    ) {
+      map.setPaintProperty(layer.id, 'line-color', color);
+    }
+  });
+}
+
+const originalRoadColors = {};
+
+function cacheRoadColors() {
+  const layers = map.getStyle().layers;
+
+  layers.forEach(layer => {
+    if (
+      layer.type === 'line' &&
+      layer.id.startsWith('highway')
+    ) {
+      const paint = map.getPaintProperty(layer.id, 'line-color');
+      originalRoadColors[layer.id] = paint;
+    }
+  });
+}
+
+function restoreRoadColors() {
+  Object.keys(originalRoadColors).forEach(layerId => {
+    map.setPaintProperty(layerId, 'line-color', originalRoadColors[layerId]);
+  });
+}      
+
+    pegmanIcon.addEventListener('dragstart', () => {
+  setRoadColor('#4285F4');
+});
+
+pegmanIcon.addEventListener('dragend', () => {
+  restoreRoadColors();
+});
+
+</script>
+
+</body>
+</html>
