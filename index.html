@@ -37,6 +37,7 @@
     }
 
 #pegman-icon {
+  touch-action: none; /* Crucial for mobile dragging */  
   width: 17px;
   height: 31px;
   cursor: grab;
@@ -47,6 +48,7 @@
   transform-origin: top center; /* Makes him look like he is hanging from the cursor */
 }
 
+  
 #pegman-icon:active {
   cursor: grabbing;
 }
@@ -154,47 +156,42 @@
 
 
   <script>
-  let currentPegmanMarker = null;  
-  let pegmanIndex = 0;  
+let currentPegmanMarker = null;  
+let pegmanIndex = 0;  
 
-  // Drag state
-  let isDragging = false;
-  let dragPegman = null;
+// Unified Drag state
+let isDragging = false;
+let dragPegman = null;
 
-  // Physics
-  let currentAngle = 0;
-  let lastX = 0;
-  let pegX = 0;
-  let pegY = 0;
+// Physics
+let currentAngle = 0;
+let lastX = 0;
+let pegX = 0;
+let pegY = 0;
 
-  const map = new maplibregl.Map({
-    container: 'map',
-    style: 'https://tiles.openfreemap.org/styles/positron',
-    center: [-0.1276, 51.5072],
-    zoom: 12,
-    attributionControl: false
-  });
+const map = new maplibregl.Map({
+  container: 'map',
+  style: 'https://tiles.openfreemap.org/styles/positron',
+  center: [-0.1276, 51.5072],
+  zoom: 12,
+  attributionControl: false
+});
 
-  map.addControl(new maplibregl.NavigationControl());
+map.addControl(new maplibregl.NavigationControl());
+map.on('load', () => cacheRoadColors());
 
-  map.on('load', () => {
-    cacheRoadColors();
-  });
+const pegmanAnimations = [
+  { name: "lost", url: "pegmanlost.gif" },
+  { name: "flee", url: "running.gif" },  
+  { name: "look", url: "pegmanlook.gif" },
+  { name: "jump", url: "pegmanjump.gif" },  
+  { name: "map", url: "pegmanmap.gif" },
+  { name: "paint", url: "pegmanpaint.gif" },
+  { name: "dance", url: "pegmandance.gif" },
+  { name: "photo", url: "pegmanphoto.gif" }
+];
 
-  const pegmanAnimations = [
-    { name: "lost", url: "pegmanlost.gif" },
-    { name: "flee", url: "running.gif" },  
-    { name: "look", url: "pegmanlook.gif" },
-    { name: "jump", url: "pegmanjump.gif" },  
-    { name: "map", url: "pegmanmap.gif" },
-    { name: "paint", url: "pegmanpaint.gif" },
-    { name: "dance", url: "pegmandance.gif" },
-    { name: "photo", url: "pegmanphoto.gif" },
-    
-    
-  ];
-
-  const pegmanMessages = {
+const pegmanMessages = {
   photo: "Sorry I'm currently shooting new Street View imagery - come back later.",
   jump: "Hi ya! Can you see me! I'm over here!",
   look: "Oh, Boy! I can't show you this view without age verification. Try looking somewhere else.",
@@ -203,10 +200,166 @@
   dance: "I'm too busy twerking to be working right now.",
   lost: "Wooh man! Where am I? More importantly who am I and why am I here?",  
   flee: "You can't drop me here! I'm outta here."    
-  };
+    
+};
 
-  const pegmanIcon = document.getElementById('pegman-icon');
+const pegmanIcon = document.getElementById('pegman-icon');
 
+// --- HELPER: START DRAG ---
+function startDragging(x, y, iconUrl, isLarge = false) {
+  isDragging = true;
+  
+  // Clean up old marker if we are grabbing one from the map
+  if (currentPegmanMarker) {
+    currentPegmanMarker.remove();
+    currentPegmanMarker = null;
+  }
+
+  dragPegman = document.createElement('img');
+  dragPegman.src = iconUrl;
+  dragPegman.style.position = 'fixed';
+  dragPegman.style.width = isLarge ? '60px' : '22px'; // Mobile friendly size
+  dragPegman.style.height = isLarge ? '60px' : '40px';
+  dragPegman.style.left = x + 'px';
+  dragPegman.style.top = y + 'px';
+  dragPegman.style.pointerEvents = 'none';
+  dragPegman.style.zIndex = 9999;
+  dragPegman.style.transformOrigin = 'top center';
+
+  document.body.appendChild(dragPegman);
+
+  lastX = x;
+  currentAngle = 0;
+  pegX = x - (isLarge ? 30 : 11);
+  pegY = y;
+
+  setRoadColor(isLarge ? '#66b2ff' : '#4285F4');
+}
+
+// --- UNIVERSAL POINTER EVENTS ---
+
+// 1. Launcher Drag
+pegmanIcon.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  startDragging(e.clientX, e.clientY, 'pegman.png', false);
+});
+
+// 2. Global Move (Mouse & Touch)
+document.addEventListener('pointermove', (e) => {
+  if (!isDragging || !dragPegman) return;
+
+  const targetX = e.clientX;
+  const targetY = e.clientY;
+
+  // Lag & Swing Physics
+  pegX += (targetX - pegX) * 0.2;
+  pegY += (targetY - pegY) * 0.2;
+
+  dragPegman.style.left = (pegX - (dragPegman.offsetWidth / 2)) + 'px';
+  dragPegman.style.top = (pegY - 10) + 'px';
+
+  const dx = targetX - pegX;
+  let targetAngle = dx * 2;
+  targetAngle = Math.max(-40, Math.min(40, targetAngle));
+  currentAngle += (targetAngle - currentAngle) * 0.2;
+
+  const bounce = Math.abs(currentAngle) * 0.15;
+  dragPegman.style.transform = `rotate(${currentAngle}deg) scale(1.2, 0.9) translateY(${bounce}px)`;
+});
+
+// 3. Global End (Mouse & Touch)
+function handleEnd(e) {
+  if (!isDragging) return;
+  isDragging = false;
+
+  if (dragPegman) {
+    dragPegman.remove();
+    dragPegman = null;
+  }
+
+  restoreRoadColors();
+
+  const rect = map.getCanvas().getBoundingClientRect();
+  if (
+    e.clientX >= rect.left && e.clientX <= rect.right &&
+    e.clientY >= rect.top && e.clientY <= rect.bottom
+  ) {
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const lngLat = map.unproject([x, y]);
+    spawnPegman(lngLat);
+  }
+}
+
+document.addEventListener('pointerup', handleEnd);
+document.addEventListener('pointercancel', handleEnd); // Handles interrupted touches
+
+// --- SPAWN LOGIC ---
+function spawnPegman(lngLat) {
+  const pegman = pegmanAnimations[pegmanIndex];
+  pegmanIndex = (pegmanIndex + 1) % pegmanAnimations.length;
+  const message = pegmanMessages[pegman.name];
+
+  if (pegman.name === "flee") {
+    handleFleeAnimation(lngLat, message, pegman.url);
+    return;
+  }
+
+  const el = document.createElement('img');
+  el.src = pegman.url;
+  el.style.width = "60px";
+  el.style.height = "60px";
+  el.style.transform = "translate(-50%, -50%)";
+
+  // Re-drag support for map markers
+  el.addEventListener('pointerdown', (e) => {
+    e.stopPropagation();
+    startDragging(e.clientX, e.clientY, el.src, true);
+  });
+
+  currentPegmanMarker = new maplibregl.Marker({ element: el }).setLngLat(lngLat).addTo(map);
+
+  const popup = new maplibregl.Popup({ offset: 25, closeButton: false, closeOnClick: false })
+    .setLngLat(lngLat).addTo(map);
+
+  typeText(popup, message);
+  currentPegmanMarker.setPopup(popup);
+}
+
+// --- FLEE & DUST ---
+function handleFleeAnimation(lngLat, message, url) {
+  const point = map.project(lngLat);
+  const rect = map.getCanvas().getBoundingClientRect();
+  const screenX = point.x + rect.left;
+  const screenY = point.y + rect.top;
+
+  // Dust
+  const dust = document.createElement('div');
+  dust.className = 'dust-cloud';
+  dust.style.left = screenX + 'px';
+  dust.style.top = screenY + 'px';
+  document.body.appendChild(dust);
+  setTimeout(() => dust.remove(), 600);
+
+  // Runner
+  const runner = document.createElement('img');
+  runner.src = url;
+  runner.className = 'fleeing-pegman';
+  runner.style.width = "60px";
+  runner.style.height = "60px";
+  runner.style.left = screenX + 'px';
+  runner.style.top = screenY + 'px';
+  runner.style.setProperty('--start-x', screenX + 'px');
+  document.body.appendChild(runner);
+
+  const popup = new maplibregl.Popup({ offset: 25, closeButton: false, closeOnClick: false })
+    .setLngLat(lngLat).addTo(map);
+  typeText(popup, message);
+
+  setTimeout(() => { runner.remove(); popup.remove(); }, 5000);
+}
+
+// (Keep your typeText, cacheRoadColors, setRoadColor, and restoreRoadColors functions as they are)
   // --------------------------
   // TYPEWRITER EFFECT
   // --------------------------
