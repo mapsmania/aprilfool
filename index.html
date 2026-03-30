@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -162,7 +163,14 @@ document.addEventListener('pointerup', (e) => {
 
   const rect = map.getCanvas().getBoundingClientRect();
   if (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom) {
-    spawnPegman(map.unproject([e.clientX - rect.left, e.clientY - rect.top]));
+    const offsetY = 10; // match your drag visual offset
+
+spawnPegman(
+  map.unproject([
+    e.clientX - rect.left,
+    e.clientY - rect.top + offsetY
+  ])
+);
   }
 });
 
