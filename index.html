@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -81,6 +80,14 @@ let pegmanIndex = 0;
 let isDragging = false;
 let dragPegman = null;
 let currentAngle = 0, pegX = 0, pegY = 0;
+let inactivityTimer = null;
+    
+const INACTIVITY_DELAY = 10000; // 10 seconds    
+
+function resetInactivityTimer() {
+  if (inactivityTimer) clearTimeout(inactivityTimer);
+  inactivityTimer = setTimeout(triggerPacman, INACTIVITY_DELAY);
+}    
 
 const map = new maplibregl.Map({
   container: 'map',
@@ -89,6 +96,17 @@ const map = new maplibregl.Map({
   zoom: 12,
   attributionControl: false
 });
+
+['pointerdown', 'pointermove', 'wheel', 'keydown'].forEach(evt => {
+  document.addEventListener(evt, resetInactivityTimer);
+});
+
+map.on('move', resetInactivityTimer);
+map.on('zoom', resetInactivityTimer);
+map.on('click', resetInactivityTimer);
+
+// start timer initially
+resetInactivityTimer();    
 
 const pegmanAnimations = [
   { name: "lost", url: "pegmanlost.gif" },
@@ -234,6 +252,61 @@ function setRoadColor(c) {
 }
 function restoreRoadColors() {
   Object.keys(colors).forEach(id => map.setPaintProperty(id, 'line-color', colors[id]));
+}
+
+function triggerPacman() {
+  const topPos = Math.random() * (window.innerHeight * 0.8);
+
+  // 🏃 PEGMAN (RUNNING FIRST)
+  const runner = document.createElement('img');
+  runner.src = 'running.gif';
+  runner.style.position = 'fixed';
+  runner.style.top = topPos + 'px';
+  runner.style.left = '-10vw'; // 👈 closer to screen (enters first)
+  runner.style.width = '60px';
+  runner.style.zIndex = 10000;
+  runner.style.pointerEvents = 'none';
+  runner.style.transition = 'left 6s linear';
+
+  document.body.appendChild(runner);
+
+  // force layout
+  runner.getBoundingClientRect();
+
+  // start Pegman moving immediately
+  runner.style.left = '110vw';
+
+  // 🟡 PACMAN (DELAYED CHASER)
+  setTimeout(() => {
+    const pac = document.createElement('img');
+    pac.src = 'pacman.gif';
+    pac.style.position = 'fixed';
+    pac.style.top = topPos + 'px';
+    pac.style.left = '-25vw'; // 👈 further behind
+    pac.style.width = '60px';
+    pac.style.zIndex = 9999;
+    pac.style.pointerEvents = 'none';
+    pac.style.transition = 'left 6s linear';
+
+    document.body.appendChild(pac);
+
+    pac.getBoundingClientRect();
+
+    pac.style.left = '110vw';
+
+    // cleanup pacman
+    setTimeout(() => {
+      pac.remove();
+    }, 6500);
+
+  }, 400); // 👈 small delay = believable chase
+
+  // cleanup pegman
+  setTimeout(() => {
+    runner.remove();
+  }, 6500);
+
+  resetInactivityTimer();
 }
 </script>
 </body>
