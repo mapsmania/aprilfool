@@ -231,6 +231,20 @@ clearBtn.onclick = () => {
     });
      
 });   
+
+// On map move, update URL
+map.on('moveend', () => {
+    const center = map.getCenter();
+    const zoom = map.getZoom();
+    history.pushState({}, '', `#${center.lng.toFixed(4)},${center.lat.toFixed(4)},${zoom.toFixed(1)}`);
+});
+
+// On load, parse URL hash
+if (window.location.hash) {
+    const [lng, lat, zoom] = window.location.hash.slice(1).split(',');
+    if (lng && lat && zoom) map.setCenter([parseFloat(lng), parseFloat(lat)]);
+    if (zoom) map.setZoom(parseFloat(zoom));
+}    
 </script>
 
 </body>
