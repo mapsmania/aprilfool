@@ -60,7 +60,17 @@
 
 <div id="map"></div>
 <div id="menu">
-  <input type="text" id="search-input" placeholder="Search rude places..." style="padding: 8px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 8px;">
+  <div style="position: relative;">
+  <input 
+  type="text" 
+  id="search-input" 
+  placeholder="Search rude places..." 
+  style="padding: 8px 28px 8px 8px; border: 1px solid #ddd; border-radius: 5px; width: 100%; box-sizing: border-box;"> 
+  <span id="clear-btn" 
+    style="position:absolute; right:8px; top:50%; transform:translateY(-50%); cursor:pointer; display:none;">
+    ✕
+  </span>
+</div>
   <div id="results-container"></div>
   <hr>
   <button onclick="setLanguage('en', this)" class="active">English</button>
@@ -169,12 +179,37 @@ map.on('load', async () => {
     const container = document.getElementById('results-container');
     container.innerHTML = ''; // Clear old results
 
-    if (!value || !currentGeojson) return;
+    if (!value || !currentGeojson) {
+  map.setFilter('rude-labels', null); // show all labels again
+  document.getElementById('results-container').innerHTML = '';
+  return;
+}
 
     // Filter the features based on the 'label' property
     const matches = currentGeojson.features.filter(f => 
         f.properties.label.toLowerCase().includes(value)
     ).slice(0, 5); // Limit to top 5 results
+
+    map.setFilter('rude-labels', [
+  'in',
+  ['get', 'label'],
+  ['literal', matches.map(m => m.properties.label)]
+]); 
+
+    const input = document.getElementById('search-input');
+const clearBtn = document.getElementById('clear-btn');
+
+input.addEventListener('input', () => {
+  clearBtn.style.display = input.value ? 'block' : 'none';
+});
+
+clearBtn.onclick = () => {
+  input.value = '';
+  clearBtn.style.display = 'none';
+
+  map.setFilter('rude-labels', null);
+  document.getElementById('results-container').innerHTML = '';
+}; 
 
     matches.forEach(feature => {
         const div = document.createElement('div');
@@ -187,14 +222,14 @@ map.on('load', async () => {
                 zoom: 10,
                 essential: true
             });
-            // Optional: Add a popup automatically on click
-            new maplibregl.Popup()
-                .setLngLat(feature.geometry.coordinates)
-                .setHTML(`<strong>${feature.properties.label}</strong><br>${feature.properties.detail}`)
-                .addTo(map);
+
+    
         };
+        
         container.appendChild(div);
+           
     });
+     
 });   
 </script>
 
