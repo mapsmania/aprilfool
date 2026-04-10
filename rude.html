@@ -80,8 +80,8 @@
 <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
 
 <script>
-let currentGeojson = null; // To store data for searching
-    
+let currentGeojson = null;
+
 const map = new maplibregl.Map({
   container: 'map',
   style: 'https://mapsmania.github.io/aprilfool/style.json',
@@ -89,118 +89,171 @@ const map = new maplibregl.Map({
   zoom: 4
 });
 
+// 🔍 SEARCH FUNCTION (reusable)
+function runSearch(value) {
+  const container = document.getElementById('results-container');
+  container.innerHTML = '';
+
+  if (!value || !currentGeojson) {
+    map.setFilter('rude-labels', null);
+    return;
+  }
+
+  const allMatches = currentGeojson.features.filter(f =>
+    f.properties.label.toLowerCase().includes(value)
+  );
+
+  const matches = allMatches.slice(0, 5);
+
+  // Filter map
+  map.setFilter('rude-labels', [
+    'in',
+    ['get', 'label'],
+    ['literal', allMatches.map(m => m.properties.label)]
+  ]);
+
+  // ✅ Auto zoom to results
+  if (allMatches.length) {
+    const bounds = new maplibregl.LngLatBounds();
+    allMatches.forEach(f => bounds.extend(f.geometry.coordinates));
+    map.fitBounds(bounds, { padding: 50, maxZoom: 8 });
+  }
+
+  // Results list
+  matches.forEach(feature => {
+    const div = document.createElement('div');
+    div.style = 'padding:5px; cursor:pointer; border-bottom:1px solid #eee; font-size:12px;';
+    div.textContent = feature.properties.label;
+
+    div.onclick = () => {
+      map.flyTo({
+        center: feature.geometry.coordinates,
+        zoom: 10
+      });
+    };
+
+    container.appendChild(div);
+  });
+}
+
+// 🌐 LANGUAGE SWITCH
 async function setLanguage(lang, btn) {
-  const url = lang === 'it' 
-    ? 'https://mapsmania.github.io/aprilfool/rude-it.geojson' 
+  const url = lang === 'it'
+    ? 'https://mapsmania.github.io/aprilfool/rude-it.geojson'
     : 'https://mapsmania.github.io/aprilfool/rude-en.geojson';
-  
-  const response = await fetch(url);
-  const geojson = await response.json();
-  
-  // Assign this AFTER the fetch is complete
+
+  const res = await fetch(url);
+  const geojson = await res.json();
   currentGeojson = geojson;
 
-  // Update UI
   document.querySelectorAll('#menu button').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
 
   map.getSource('rude-places').setData(geojson);
 }
 
+// 🗺️ LOAD MAP
 map.on('load', async () => {
-  // Load GeoJSON
-  const response = await fetch('https://mapsmania.github.io/aprilfool/rude-en.geojson');
-  const geojson = await response.json();
-  
-  // Assign this AFTER the fetch is complete
+  const res = await fetch('https://mapsmania.github.io/aprilfool/rude-en.geojson');
+  const geojson = await res.json();
   currentGeojson = geojson;
-    
-  // Add source
+
   map.addSource('rude-places', {
-  type: 'geojson',
-  data: geojson,
-  attribution: 'Contains data from <a href="https://www.vaguelyrudeplacesmap.com/" target="_blank">Vaguely Rude Places Map</a> (CC BY-SA 4.0, modified)'
+    type: 'geojson',
+    data: geojson,
+    attribution: 'Contains data from <a href="https://www.vaguelyrudeplacesmap.com/" target="_blank">Vaguely Rude Places Map</a> (CC BY-SA 4.0, modified)'
+  });
+
+  map.addLayer({
+    id: 'rude-labels',
+    type: 'symbol',
+    source: 'rude-places',
+    minzoom: 3,
+    layout: {
+      'text-anchor': 'bottom',
+      'text-offset': [0, -0.1],
+      'text-max-width': 8,
+      'text-font': ['Noto Sans Bold'],
+      'text-field': [
+        'let',
+        'commaIndex', ['index-of', ',', ['get', 'label']],
+        [
+          'case',
+          ['>=', ['var', 'commaIndex'], 0],
+          ['slice', ['get', 'label'], 0, ['var', 'commaIndex']],
+          ['get', 'label']
+        ]
+      ],
+      'text-size': [
+        'interpolate',
+        ['exponential', 1.2],
+        ['zoom'],
+        4, 11,
+        7, 13,
+        11, 18
+      ]
+    },
+    paint: {
+      'text-color': '#000',
+      'text-halo-color': '#fff',
+      'text-halo-width': 1,
+      'text-halo-blur': 1
+    }
+  });
+
+  handleInitialURL(); // 👈 important
 });
 
-  // Add labels layer
- map.addLayer({
-  id: 'rude-labels',
-  type: 'symbol',
-  source: 'rude-places',
-  minzoom: 3,
+// 🔗 HANDLE URL ON LOAD
+function handleInitialURL() {
+  if (!window.location.hash) return;
 
-  layout: {
-    // mimic original placement
-    'text-anchor': 'bottom',
-    'text-offset': [0, -0.1],
-    'text-max-width': 8,
+  const hash = window.location.hash.slice(1);
 
-    'text-field': [
-  'let',
-  'commaIndex', ['index-of', ',', ['get', 'label']],
-  [
-    'case',
-    // If a comma exists (index > -1), slice from start to the comma
-    ['>=', ['var', 'commaIndex'], 0],
-    ['slice', ['get', 'label'], 0, ['var', 'commaIndex']],
-    // Otherwise, just show the whole label
-    ['get', 'label']
-  ]
-],
-    // use bold as you discovered works
-    'text-font': ['Noto Sans Bold'],
+  // 🔍 Search mode
+  if (hash.startsWith('search=')) {
+    const value = hash.replace('search=', '').toLowerCase();
+    document.getElementById('search-input').value = value;
 
-    // smooth zoom scaling (copied from style)
-    'text-size': [
-      'interpolate',
-      ['exponential', 1.2],
-      ['zoom'],
-      4, 11,
-      7, 13,
-      11, 18
-    ],
-
-    'visibility': 'visible'
-  },
-
-  paint: {
-    // match original look
-    'text-color': '#000',
-    'text-halo-color': '#fff',
-    'text-halo-width': 1,
-    'text-halo-blur': 1
+    const wait = setInterval(() => {
+      if (currentGeojson) {
+        runSearch(value);
+        clearInterval(wait);
+      }
+    }, 100);
   }
-});
 
-});
-
- document.getElementById('search-input').addEventListener('input', (e) => {
-    const value = e.target.value.toLowerCase();
-    const container = document.getElementById('results-container');
-    container.innerHTML = ''; // Clear old results
-
-    if (!value || !currentGeojson) {
-  map.setFilter('rude-labels', null); // show all labels again
-  document.getElementById('results-container').innerHTML = '';
-  return;
+  // 🌍 Map position mode
+  else {
+    const [lng, lat, zoom] = hash.split(',');
+    if (lng && lat) map.setCenter([+lng, +lat]);
+    if (zoom) map.setZoom(+zoom);
+  }
 }
 
-    // Filter the features based on the 'label' property
-    const matches = currentGeojson.features.filter(f => 
-        f.properties.label.toLowerCase().includes(value)
-    ).slice(0, 5); // Limit to top 5 results
+// 🔁 UPDATE URL ON MAP MOVE
+map.on('moveend', () => {
+  const center = map.getCenter();
+  const zoom = map.getZoom();
+  history.replaceState({}, '', `#${center.lng.toFixed(4)},${center.lat.toFixed(4)},${zoom.toFixed(1)}`);
+});
 
-    map.setFilter('rude-labels', [
-  'in',
-  ['get', 'label'],
-  ['literal', matches.map(m => m.properties.label)]
-]); 
-
-    const input = document.getElementById('search-input');
+// 🔍 INPUT + CLEAR BUTTON
+const input = document.getElementById('search-input');
 const clearBtn = document.getElementById('clear-btn');
 
-input.addEventListener('input', () => {
-  clearBtn.style.display = input.value ? 'block' : 'none';
+input.addEventListener('input', (e) => {
+  const value = e.target.value.toLowerCase();
+
+  clearBtn.style.display = value ? 'block' : 'none';
+
+  if (value) {
+    history.replaceState({}, '', `#search=${value}`);
+  } else {
+    history.replaceState({}, '', '#');
+  }
+
+  runSearch(value);
 });
 
 clearBtn.onclick = () => {
@@ -209,42 +262,11 @@ clearBtn.onclick = () => {
 
   map.setFilter('rude-labels', null);
   document.getElementById('results-container').innerHTML = '';
-}; 
 
-    matches.forEach(feature => {
-        const div = document.createElement('div');
-        div.style = 'padding: 5px; cursor: pointer; border-bottom: 1px solid #eee; font-size: 12px;';
-        div.textContent = feature.properties.label;
-        
-        div.onclick = () => {
-            map.flyTo({
-                center: feature.geometry.coordinates,
-                zoom: 10,
-                essential: true
-            });
+  map.flyTo({ center: [14.5, 47.5], zoom: 4 });
 
-    
-        };
-        
-        container.appendChild(div);
-           
-    });
-     
-});   
-
-// On map move, update URL
-map.on('moveend', () => {
-    const center = map.getCenter();
-    const zoom = map.getZoom();
-    history.pushState({}, '', `#${center.lng.toFixed(4)},${center.lat.toFixed(4)},${zoom.toFixed(1)}`);
-});
-
-// On load, parse URL hash
-if (window.location.hash) {
-    const [lng, lat, zoom] = window.location.hash.slice(1).split(',');
-    if (lng && lat && zoom) map.setCenter([parseFloat(lng), parseFloat(lat)]);
-    if (zoom) map.setZoom(parseFloat(zoom));
-}    
+  history.replaceState({}, '', '#');
+};
 </script>
 
 </body>
