@@ -1,61 +1,91 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <title>Manhattan Artistic Mask</title>
+    <title>Artistic Sync: London in Manhattan</title>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"></script>
     <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-    <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
     <style>
-        body { margin: 0; padding: 0; }
-        #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+        body { margin: 0; padding: 0; overflow: hidden; }
+        #map-visible { position: absolute; top: 0; bottom: 0; width: 100%; z-index: 1; }
+        /* Keep the London map hidden but active */
+        #map-hidden { position: absolute; width: 512px; height: 512px; top: -1000px; visibility: hidden; }
     </style>
 </head>
 <body>
 
-<div id="map"></div>
+<div id="map-visible"></div>
+<div id="map-hidden"></div>
 
 <script>
+    // Configuration: The "Anchor" points for the swap
+    const NYC_CENTER = [-74.006, 40.712];
+    const LONDON_CENTER = [-0.1276, 51.5072];
+
+    // 1. Initialize the Hidden London Map
+    const londonMap = new maplibregl.Map({
+        container: 'map-hidden',
+        style: 'https://tiles.openfreemap.org/styles/liberty',
+        center: LONDON_CENTER,
+        zoom: 13,
+        interactive: false,
+        preserveDrawingBuffer: true // Required to read the canvas
+    });
+
+    // 2. Initialize the Visible NYC Map
     const map = new maplibregl.Map({
-        container: 'map',
+        container: 'map-visible',
         style: 'https://tiles.openfreemap.org/styles/liberty', 
-        center: [-73.977, 40.783], // Manhattan center
-        zoom: 12
+        center: NYC_CENTER,
+        zoom: 13
     });
 
     map.on('load', () => {
-        // 1. Add your Manhattan GeoJSON source
-        map.addSource('manhattan-boundary', {
+        // Add Manhattan GeoJSON
+        map.addSource('manhattan-mask', {
             'type': 'geojson',
-            'data': 'manhattan.geojson' // Ensure this file is in your local directory
+            'data': 'manhattan.geojson' // Your file
         });
 
-        // 2. Add a Fill Layer (The "Stencil" area)
-        map.addLayer({
-            'id': 'manhattan-fill',
-            'type': 'fill',
-            'source': 'manhattan-boundary',
-            'layout': {},
-            'paint': {
-                'fill-color': '#088', // Artistic teal color
-                'fill-opacity': 0.4,
-                'fill-outline-color': '#000'
-            }
+        // Add the Hidden Canvas as a Source
+        map.addSource('london-canvas-source', {
+            type: 'canvas',
+            canvas: londonMap.getCanvas(), // Pipe the London canvas here
+            animate: true,
+            coordinates: [
+                [-74.047, 40.800], // Adjust these 4 points to "stretch"
+                [-73.906, 40.800], // the London texture over Manhattan
+                [-73.906, 40.680],
+                [-74.047, 40.680]
+            ]
         });
 
-        // 3. Optional: Add a Line Layer for a sharp river edge
+        // Layer the London "Skin" onto Manhattan
         map.addLayer({
-            'id': 'manhattan-outline',
-            'type': 'line',
-            'source': 'manhattan-boundary',
-            'layout': {},
-            'paint': {
-                'line-color': '#000',
-                'line-width': 2
-            }
+            'id': 'london-layer',
+            'type': 'raster',
+            'source': 'london-canvas-source'
+        }, 'waterway-name'); // Place it below labels for extra style
+    });
+
+    // 3. THE SYNC LOGIC
+    // When the user moves the NYC map, we move the London map by the same delta
+    map.on('move', () => {
+        const nycPos = map.getCenter();
+        const nycZoom = map.getZoom();
+
+        // Calculate the relative offset
+        const latDelta = nycPos.lat - NYC_CENTER[1];
+        const lonDelta = nycPos.lng - NYC_CENTER[0];
+
+        // Move the hidden London camera
+        londonMap.jumpTo({
+            center: [LONDON_CENTER[0] + lonDelta, LONDON_CENTER[1] + latDelta],
+            zoom: nycZoom,
+            bearing: map.getBearing(),
+            pitch: map.getPitch()
         });
     });
 </script>
-
 </body>
 </html>
