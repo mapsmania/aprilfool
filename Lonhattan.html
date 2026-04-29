@@ -1,100 +1,91 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <title>Lonhattan: Artistic Fusion</title>
-    <meta charset="utf-8">
+    <title>Lonhattan Collage</title>
     <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
     <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
     <style>
-        body { margin: 0; padding: 0; overflow: hidden; background: #202020; }
-        #map-visible { position: absolute; top: 0; bottom: 0; width: 100%; z-index: 1; }
-        /* The London map stays hidden in the background */
-        #map-hidden { position: absolute; width: 1024px; height: 1024px; top: -2000px; }
+        body { margin: 0; padding: 0; overflow: hidden; }
+        .map-container { position: absolute; top: 0; bottom: 0; width: 100%; }
+        #london-map { z-index: 1; } /* The Background */
+        #nyc-map { z-index: 2; pointer-events: none; } /* The Mask (Passes clicks through) */
     </style>
 </head>
 <body>
 
-<div id="map-visible"></div>
-<div id="map-hidden"></div>
+<div id="london-map" class="map-container"></div>
+<div id="nyc-map" class="map-container"></div>
 
 <script>
-    const NYC_CENTER = [-73.977, 40.783];
-    const LONDON_CENTER = [-0.1276, 51.5072];
-
+    // 1. Initialize London (Background)
     const londonMap = new maplibregl.Map({
-        container: 'map-hidden',
-        style: 'https://tiles.openfreemap.org/styles/liberty',
-        center: LONDON_CENTER,
-        zoom: 13,
-        interactive: false,
-        preserveDrawingBuffer: true
-    });
-
-    const map = new maplibregl.Map({
-        container: 'map-visible',
-        style: 'https://tiles.openfreemap.org/styles/liberty', 
-        center: NYC_CENTER,
+        container: 'london-map',
+        style: 'https://tiles.openfreemap.org/styles/dark', // Dark makes the "hole" pop
+        center: [-0.1276, 51.5072],
         zoom: 13
     });
 
-    map.on('load', () => {
-        // Load the Manhattan shape
-        map.addSource('manhattan-mask', {
-            'type': 'geojson',
-            'data': 'manhattan.geojson'
-        });
-
-        // Use the hidden London canvas as a source
-        map.addSource('london-canvas', {
-            type: 'canvas',
-            canvas: londonMap.getCanvas(),
-            animate: true,
-            // These coordinates pin the "London Tile" over the NYC area
-            coordinates: [
-                [-74.1, 40.85], 
-                [-73.8, 40.85],
-                [-73.8, 40.70],
-                [-74.1, 40.70]
-            ]
-        });
-
-        // FIX 2: Added 'fill-mask' logic
-        // We use the Manhattan GeoJSON to "clip" the London canvas
-        map.addLayer({
-            'id': 'london-layer',
-            'type': 'fill',
-            'source': 'manhattan-mask',
-            'paint': {
-                'fill-pattern': 'london-canvas-img' // We'll update this live
-            }
-        });
-
-        // Simpler approach for the artistic effect: 
-        // Just overlay the London canvas and use Manhattan as a clip-path
-        map.addLayer({
-            'id': 'london-overlay',
-            'type': 'raster',
-            'source': 'london-canvas',
-            'paint': { 'raster-opacity': 1.0 }
-        });
-
-        // To keep the rivers, we keep the NYC water layers ON TOP
-        // Usually 'water' or 'waterway' in Liberty style
+    // 2. Initialize NYC (Top Layer)
+    const nycMap = new maplibregl.Map({
+        container: 'nyc-map',
+        style: 'https://tiles.openfreemap.org/styles/liberty',
+        center: [-73.977, 40.783],
+        zoom: 13,
+        interactive: false // It follows London's movements
     });
 
-    // FIX 3: Robust Syncing
-    map.on('move', () => {
-        const nycPos = map.getCenter();
-        const latDelta = nycPos.lat - NYC_CENTER[1];
-        const lonDelta = nycPos.lng - NYC_CENTER[0];
+    // Helper to create the inverse "Hole"
+    function createInverseMask(manhattanGeojson) {
+        const worldOuter = [[-180, 90], [180, 90], [180, -90], [-180, -90], [-180, 90]];
+        const manhattanCoords = manhattanGeojson.features[0].geometry.coordinates[0];
+        
+        return {
+            "type": "FeatureCollection",
+            "features": [{
+                "type": "Feature",
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [worldOuter, manhattanCoords]
+                }
+            }]
+        };
+    }
 
-        londonMap.jumpTo({
-            center: [LONDON_CENTER[0] + lonDelta, LONDON_CENTER[1] + latDelta],
-            zoom: map.getZoom(),
-            bearing: map.getBearing(),
-            pitch: map.getPitch()
+    // Sync London movements to NYC
+    londonMap.on('move', () => {
+        const center = londonMap.getCenter();
+        const zoom = londonMap.getZoom();
+        // Shift NYC to stay centered relative to London
+        // (You can add an offset here if you want to align specific streets)
+        nycMap.jumpTo({
+            center: [-73.977 + (center.lng - (-0.1276)), 40.783 + (center.lat - 51.5072)],
+            zoom: zoom,
+            bearing: londonMap.getBearing(),
+            pitch: londonMap.getPitch()
         });
     });
+
+    fetch('manhattan.geojson')
+        .then(res => res.json())
+        .then(data => {
+            nycMap.on('load', () => {
+                nycMap.addSource('mask', {
+                    'type': 'geojson',
+                    'data': createInverseMask(data)
+                });
+
+                // This layer covers EVERYTHING except Manhattan
+                nycMap.addLayer({
+                    'id': 'hole-layer',
+                    'type': 'fill',
+                    'source': 'mask',
+                    'paint': {
+                        'fill-color': '#f8f4f0', // Match the NYC map background color
+                        'fill-opacity': 1
+                    }
+                });
+            });
+        });
 </script>
 </body>
 </html>
