@@ -1,14 +1,15 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Lonhattan Collage</title>
+    <title>Lonhattan Fusion</title>
     <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
     <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
     <style>
         body { margin: 0; padding: 0; overflow: hidden; background: #000; }
         .map-container { position: absolute; top: 0; bottom: 0; width: 100%; }
         #london-map { z-index: 1; } 
-        #nyc-map { z-index: 2; pointer-events: none; } 
+        /* Crucial: nyc-map must have a transparent background */
+        #nyc-map { z-index: 2; pointer-events: none; background: transparent !important; } 
     </style>
 </head>
 <body>
@@ -17,13 +18,12 @@
 <div id="nyc-map" class="map-container"></div>
 
 <script>
-    // Config
     const NYC_BASE = [-73.977, 40.783];
     const LDN_BASE = [-0.1276, 51.5072];
 
     const londonMap = new maplibregl.Map({
         container: 'london-map',
-        style: 'https://tiles.openfreemap.org/styles/liberty',
+        style: 'https://tiles.openfreemap.org/styles/dark', // Dark makes London look distinct
         center: LDN_BASE,
         zoom: 13
     });
@@ -33,32 +33,15 @@
         style: 'https://tiles.openfreemap.org/styles/liberty',
         center: NYC_BASE,
         zoom: 13,
-        interactive: false
+        interactive: false,
+        // This tells the browser to allow transparency in the map canvas
+        clearColor: [0, 0, 0, 0] 
     });
 
-    // The "Inverse" Logic: A giant box with Manhattan cut out
-    function createMask(geojson) {
-        const world = [[-180, 90], [180, 90], [180, -90], [-180, -90], [-180, 90]];
-        // Extract coordinates. Handling both Polygon and MultiPolygon
-        let coords = geojson.features[0].geometry.coordinates;
-        if (geojson.features[0].geometry.type === "Polygon") {
-            return {
-                "type": "Feature",
-                "geometry": { "type": "Polygon", "coordinates": [world, coords[0]] }
-            };
-        } else {
-            // MultiPolygon handling
-            return {
-                "type": "Feature",
-                "geometry": { "type": "Polygon", "coordinates": [world, ...coords.map(c => c[0])] }
-            };
-        }
-    }
-
+    // Sync maps
     londonMap.on('move', () => {
         const c = londonMap.getCenter();
         const z = londonMap.getZoom();
-        // Sync NYC map to follow London movements
         nycMap.jumpTo({
             center: [NYC_BASE[0] + (c.lng - LDN_BASE[0]), NYC_BASE[1] + (c.lat - LDN_BASE[1])],
             zoom: z,
@@ -67,34 +50,24 @@
         });
     });
 
-    fetch('manhattan.geojson')
-        .then(res => res.json())
-        .then(data => {
-            nycMap.on('load', () => {
-                // Add the NYC base layers first
-                // Then add the MASK that hides NYC *inside* Manhattan
-                nycMap.addSource('manhattan-hole', {
-                    'type': 'geojson',
-                    'data': data // The actual shape
-                });
+    async function applyHole() {
+        const res = await fetch('manhattan.geojson');
+        const data = await res.json();
+        const geom = data.features[0].geometry;
 
-                // Instead of an inverse mask, we use a "Destination-Out" style trick
-                // We'll fill the Manhattan shape with a color that acts as a "Hole"
-                // In standard MapLibre, the easiest way is to make the fill transparent
-                // but we need to hide the underlying NYC map layers.
-                
-                // REVISED STRATEGY:
-                // We hide the NYC layers ONLY within the Manhattan geometry.
-                const layers = nycMap.getStyle().layers;
-                layers.forEach(layer => {
-                    if (layer.id !== 'background') {
-                        nycMap.setFilter(layer.id, [
-                            "!", ["within", data.features[0].geometry]
-                        ]);
-                    }
-                });
+        nycMap.on('style.load', () => {
+            // 1. Kill the background
+            if (nycMap.getLayer('background')) nycMap.removeLayer('background');
+            
+            // 2. Hide NYC data inside the Manhattan shape
+            const layers = nycMap.getStyle().layers;
+            layers.forEach(l => {
+                nycMap.setFilter(l.id, ["!", ["within", geom]]);
             });
         });
+    }
+
+    applyHole();
 </script>
 </body>
 </html>
